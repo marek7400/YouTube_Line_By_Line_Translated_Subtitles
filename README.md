@@ -4,4 +4,4 @@
 
 ![2](images/2.jpg)
 
-![3options](images/3options.jpg)
+![3options](images/3options.png)
