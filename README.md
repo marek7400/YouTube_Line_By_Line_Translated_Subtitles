@@ -12,7 +12,7 @@
 
 ![3options](images/3options.png)
 
-YouTube Line By Line Translated Subtitles
+YouTube Line By Line Translated Subtitles (ONLY CHROME)
 
 A Chrome browser extension that improves YouTube subtitles by displaying automatically translated subtitles while maintaining the original timestamps. It offers full customization of the subtitle appearance and advanced options such as time shifting.
 
@@ -42,7 +42,7 @@ Subtitle Width: Set the width of the subtitle container as a percentage.
 Subtitle Time Shift: Enter a value in milliseconds (can be negative) to delay or speed up the display of subtitles. Changes are applied immediately.
 
 *********************************************************************************
-YouTube Line By Line Translated Subtitles
+YouTube Line By Line Translated Subtitles (działa poprawnie w CHROME, w Operze nie)
 
 Rozszerzenie do przeglądarki Chrome, które ulepsza napisy na YouTube, pozwalając na wyświetlanie automatycznie tłumaczonych napisów z zachowaniem oryginalnych znaczników czasu. Oferuje pełną personalizację wyglądu napisów oraz zaawansowane opcje, takie jak przesunięcie czasowe.
 
