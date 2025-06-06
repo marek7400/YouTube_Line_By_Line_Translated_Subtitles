@@ -1,4 +1,4 @@
-![yt](images/yt.png)
+![yt](images/yt.jpg)
 
 ![1](images/1.jpg)
 
