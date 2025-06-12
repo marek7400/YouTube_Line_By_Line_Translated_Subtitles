@@ -1,5 +1,6 @@
 ***YouTube Line By Line Translated Subtitles***
 
+Turn On Youtube subtitles (!!! you must !!!) and Turn ON Subtitles in extension.
 
 Container Width 40%
 ![1](images/1.png)
