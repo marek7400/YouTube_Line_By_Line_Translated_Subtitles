@@ -1,6 +1,7 @@
-***YouTube Line By Line Translated Subtitles***
+# YouTube Line By Line Translated Subtitles #
 
-Turn On Youtube subtitles (!!! you must !!!) and Turn ON Subtitles in extension.
+**Turn On Youtube subtitles (!!! you must !!!) and Turn ON Subtitles in extension.
+By default, if the “movie language” = “browser language,” subtitles are turned off (you can turn them on manually).**
 
 Container Width 40%
 ![1](images/1.png)
@@ -27,7 +28,11 @@ Time Shift: Precisely synchronize subtitles with audio, which is especially usef
 Smart Positioning: Subtitles automatically rise when you hover over the movie progress bar, without obscuring the interface.
 
 *********************************************************************************
-YouTube Line By Line Translated Subtitles (działa poprawnie w CHROME, w Operze nie)
+# YouTube Line By Line Translated Subtitles. #
+
+**Włącz napisy na Youtube (!!! musisz !!!) i WŁĄCZ napisy w rozszerzeniu.**
+
+**Domyślnie - jeżeli "język filmu"="językowi przeglądarki" to napisy są wyłączone (można je ręcznie włączyć).**
 
 Rozszerzenie do przeglądarki Chrome, które ulepsza napisy na YouTube, pozwalając na wyświetlanie automatycznie tłumaczonych napisów z zachowaniem oryginalnych znaczników czasu. 
 
