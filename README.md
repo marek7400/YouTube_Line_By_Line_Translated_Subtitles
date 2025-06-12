@@ -11,6 +11,10 @@ Container Width 100%
 
 ![2](images/2.png)
 
+<br>
+Opacity set to 0.5
+
+![opacity05](images/opacity05.png)
 
 Full Appearance Customization: Adjust the font size, color, background color, and transparency.
 
