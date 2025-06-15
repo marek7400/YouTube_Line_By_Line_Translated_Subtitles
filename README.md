@@ -1,7 +1,6 @@
 # YouTube Line By Line Translated Subtitles - Chrome extension
 
 **Turn On Youtube subtitles (!!! you must !!!) and Turn ON Subtitles in extension.
-By default, if the “movie language” = “browser language,” subtitles are turned off (you can turn them on manually).**
 
 Container Width 40%
 ![1](images/1.png)
