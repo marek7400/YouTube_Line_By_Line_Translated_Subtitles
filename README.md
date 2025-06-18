@@ -3,6 +3,9 @@
 
 v2.1 Added the ability to turn subtitles on/off with the “X” key and resolved a conflict with the “YouTube Original Audio Selector” plugin.
 <br>
+<br>
+<br>
+
 Container Width 40%
 ![1](images/1.png)
 
