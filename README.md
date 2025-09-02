@@ -1,7 +1,7 @@
 # YouTube Line By Line Translated Subtitles - Chrome extension
 ## Turn On Youtube subtitles (!!! you must !!!) and Turn ON Subtitles in extension.
 
-2.09.2025 Stop working in Opera browser (YT make some changes)
+(if you don`t see subtitles - check ON/OFF option in extension settings or press "X")
 
 ### v2.1 Added the ability to turn subtitles ON/OFF with the “X” key and resolved a conflict with the “YouTube Original Audio Selector” plugin.
 <br>
