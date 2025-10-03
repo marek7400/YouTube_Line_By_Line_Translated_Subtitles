@@ -3,6 +3,11 @@
 
 (if you don`t see subtitles - check ON/OFF option in extension settings or press "X")
 
+### v2.2 Fix open settings on https://www.yout-ube.com page.
+<br>
+<br>
+<br>
+
 ### v2.1 Added the ability to turn subtitles ON/OFF with the “X” key and resolved a conflict with the “YouTube Original Audio Selector” plugin.
 <br>
 <br>
