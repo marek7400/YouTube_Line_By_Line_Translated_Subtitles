@@ -1,0 +1,429 @@
+// ==UserScript==
+// @name         YouTube Line By Line Translated Subtitles - Fix C & Icon Toggle
+// @namespace    http://tampermonkey.net/
+// @version      2.8.9
+// @description  Synchronizacja z klawiszem C i ikonką CC + fix pustej linii.
+// @author       marek7400
+// @match        *://www.youtube.com/*
+// @match        *://www.youtube-nocookie.com/*
+// @run-at       document-idle
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    let activeSubData = null;
+    let customSubtitleElement = null;
+    let playerApi = null;
+    let settings = {};
+    let isHoveringControls = false;
+    let lastActiveSubDataCache = null;
+    let currentViewMode = 'normal';
+
+    const defaultSettings = {
+        normal: { enabled: true, color: '#FFFFFF', fontSize: 22, bgOpacity: 0.8, bgColor: '#000000', vPosition: 40, timeOffset: 0, containerWidth: 80 },
+        fullscreen: { enabled: true, color: '#FFFFFF', fontSize: 28, bgOpacity: 0.7, bgColor: '#000000', vPosition: 60, timeOffset: 0, containerWidth: 80 }
+    };
+
+    function saveSettings() {
+        try { localStorage.setItem('yt-custom-subs-settings', JSON.stringify(settings)); } catch(e) { console.error("Save error", e); }
+    }
+
+    function loadSettings() {
+        const saved = localStorage.getItem('yt-custom-subs-settings');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                settings = {
+                    normal: { ...defaultSettings.normal, ...parsed.normal },
+                    fullscreen: { ...defaultSettings.fullscreen, ...parsed.fullscreen }
+                };
+            } catch(e) { settings = JSON.parse(JSON.stringify(defaultSettings)); }
+        } else {
+            settings = JSON.parse(JSON.stringify(defaultSettings));
+        }
+    }
+
+    function hexToRgba(hex, opacity) {
+        let c;
+        if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+            c = hex.substring(1).split('');
+            if (c.length == 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+            c = '0x' + c.join('');
+            return `rgba(${[(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',')},${opacity})`;
+        }
+        return `rgba(0,0,0,${opacity})`;
+    }
+
+    function applyStyles() {
+        if (!customSubtitleElement) return;
+        const mode = document.fullscreenElement ? 'fullscreen' : 'normal';
+        const s = settings[mode];
+
+        const controlsHeight = 75;
+        const bottomPosition = isHoveringControls ? `${controlsHeight}px` : `${s.vPosition}px`;
+
+        customSubtitleElement.style.color = s.color;
+        customSubtitleElement.style.fontSize = `${s.fontSize}px`;
+        customSubtitleElement.style.backgroundColor = hexToRgba(s.bgColor, s.bgOpacity);
+        customSubtitleElement.style.bottom = bottomPosition;
+        customSubtitleElement.style.width = `${s.containerWidth}%`;
+
+        if (!customSubtitleElement.innerText.trim()) {
+            customSubtitleElement.style.display = 'none';
+        }
+    }
+
+    // --- SYNCHRONIZACJA Z YT ---
+    function syncSettingsWithNativeCC() {
+        const ccBtn = document.querySelector('.ytp-subtitles-button');
+        if (!ccBtn) return;
+
+        // Sprawdź czy natywny przycisk YouTube jest aktywny (aria-pressed="true")
+        const isNativeActive = ccBtn.getAttribute('aria-pressed') === 'true';
+
+        if (settings.normal.enabled !== isNativeActive) {
+            settings.normal.enabled = isNativeActive;
+            settings.fullscreen.enabled = isNativeActive;
+
+            // Odśwież UI panelu jeśli jest otwarty
+            const p = document.getElementById('yt-custom-subs-panel');
+            if (p && p.style.display !== 'none') {
+                 const b = p.querySelector('.toggle-btn');
+                 if(b) {
+                     b.textContent = isNativeActive ? "Turn Subtitles OFF" : "Turn Subtitles ON";
+                     b.style.background = isNativeActive ? "#3ea6ff" : "#555";
+                 }
+            }
+            saveSettings();
+        }
+    }
+
+    function processSubtitles(data) {
+        if (!data || !data.events) return [];
+        return data.events
+            .filter(e => e.segs && e.segs.map(s => s.utf8).join('').trim() !== '')
+            .map((event, i, all) => {
+                const start = event.tStartMs;
+                const text = event.segs.map(s => s.utf8).join('').replace(/\\n/g, '\n').trim();
+                const next = all[i + 1];
+                
+                // FIX: Używamy docelowego czasu trwania (dDurationMs), aby napis znikał w trakcie ciszy.
+                let end = start + (event.dDurationMs || 3000);
+                
+                // Zabezpieczenie: jeśli czas trwania jest na tyle długi, że wchodzi na kolejny napis, przycinamy go.
+                if (next && end > next.tStartMs) {
+                    end = next.tStartMs;
+                }
+                
+                if (end <= start) end = start + 1000;
+                return { start, end, text };
+            });
+    }
+
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        const url = args[0] instanceof URL ? args[0].href : String(args[0]);
+        const fetchPromise = originalFetch.apply(window, args);
+        if (url.includes('/api/timedtext')) {
+            fetchPromise.then(response => {
+                const clone = response.clone();
+                clone.json().then(jsonData => {
+                    lastActiveSubDataCache = processSubtitles(jsonData);
+                    activeSubData = lastActiveSubDataCache;
+                }).catch(() => {});
+            }).catch(() => {});
+        }
+        return fetchPromise;
+    };
+
+    const originalXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(m, url) {
+        this._isSubs = String(url).includes('/api/timedtext');
+        return originalXhrOpen.apply(this, arguments);
+    };
+    const originalXhrSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function() {
+        if (this._isSubs) {
+            this.addEventListener('load', () => {
+                try {
+                    const data = processSubtitles(JSON.parse(this.responseText));
+                    lastActiveSubDataCache = data;
+                    activeSubData = data;
+                } catch(e) {}
+            });
+        }
+        return originalXhrSend.apply(this, arguments);
+    };
+
+    function renderSubtitle() {
+        if (!playerApi || !customSubtitleElement) return;
+
+        // KROK 1: Synchronizuj stan z przyciskiem YT
+        syncSettingsWithNativeCC();
+
+        const mode = document.fullscreenElement ? 'fullscreen' : 'normal';
+
+        if (!settings[mode]?.enabled) {
+            customSubtitleElement.style.display = 'none';
+            customSubtitleElement.innerText = '';
+            return;
+        }
+
+        if (!activeSubData && lastActiveSubDataCache) activeSubData = lastActiveSubDataCache;
+        if (!activeSubData) {
+            customSubtitleElement.style.display = 'none';
+            return;
+        }
+
+        const timeMs = (playerApi.getCurrentTime() * 1000) + (settings[mode].timeOffset || 0);
+        const active = activeSubData.find(sub => timeMs >= sub.start && timeMs < sub.end);
+
+        if (active && active.text.trim()) {
+            if (customSubtitleElement.innerText !== active.text) {
+                customSubtitleElement.innerText = active.text;
+            }
+            customSubtitleElement.style.display = 'block';
+            customSubtitleElement.style.opacity = '1';
+        } else {
+            customSubtitleElement.style.opacity = '0';
+            customSubtitleElement.style.display = 'none';
+            customSubtitleElement.innerText = '';
+        }
+    }
+
+    // --- PANEL USTAWIEŃ ---
+    function createPanel() {
+        if (document.getElementById('yt-custom-subs-panel')) return;
+
+        const panel = document.createElement('div');
+        panel.id = 'yt-custom-subs-panel';
+        panel.style.cssText = `
+            position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+            width: 350px; background: #181818; color: white; border-radius: 12px;
+            z-index: 2147483646; font-family: sans-serif; display: flex; flex-direction: column;
+            border: 1px solid #3e3e3e; box-shadow: 0 8px 32px rgba(0,0,0,0.8); font-size: 14px;
+        `;
+
+        const styleTag = document.createElement('style');
+        styleTag.textContent = `
+            #yt-custom-subs-panel .control-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+            #yt-custom-subs-panel .slider-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+            #yt-custom-subs-panel .slider-wrapper { display: flex; align-items: center; gap: 10px; }
+            #yt-custom-subs-panel input[type=range] { flex-grow: 1; accent-color: #3ea6ff; }
+            #yt-custom-subs-panel input[type=number] { width: 60px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px 5px; }
+            #yt-custom-subs-panel input[type=color] { border: 1px solid #555; background: none; width: 40px; height: 25px; cursor: pointer; }
+            #yt-custom-subs-panel .toggle-btn { width: 100%; padding: 10px; background: #3ea6ff; color: #000; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
+            #yt-custom-subs-panel .mode-selector { text-align: center; padding: 10px 0; border-bottom: 1px solid #333; margin-bottom: 15px; }
+            #yt-custom-subs-panel .mode-selector label { cursor: pointer; margin: 0 10px; }
+        `;
+        document.head.appendChild(styleTag);
+
+        const header = document.createElement('div');
+        header.style.cssText = "padding: 12px; background: #282828; border-bottom: 1px solid #3e3e3e; cursor: move; border-top-left-radius: 12px; border-top-right-radius: 12px; display: flex; justify-content: space-between; font-weight: bold;";
+
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = "⚙️ Subtitle Settings";
+        const closeX = document.createElement('span');
+        closeX.textContent = "✕";
+        closeX.style.cssText = "cursor:pointer; padding: 0 5px;";
+        closeX.onclick = () => { panel.style.display = 'none'; };
+
+        header.appendChild(headerTitle);
+        header.appendChild(closeX);
+        panel.appendChild(header);
+
+        const content = document.createElement('div');
+        content.style.padding = "15px";
+        panel.appendChild(content);
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = "toggle-btn";
+        content.appendChild(toggleBtn);
+
+        const modeDiv = document.createElement('div');
+        modeDiv.className = "mode-selector";
+        const createRadio = (val, labelText, checked) => {
+            const lbl = document.createElement('label');
+            const rad = document.createElement('input');
+            rad.type = "radio"; rad.name = "viewMode"; rad.value = val; rad.checked = checked;
+            rad.onchange = (e) => { currentViewMode = e.target.value; updatePanelUI(); };
+            lbl.appendChild(rad);
+            lbl.appendChild(document.createTextNode(" " + labelText));
+            return lbl;
+        };
+        modeDiv.appendChild(createRadio("normal", "Normal", true));
+        modeDiv.appendChild(createRadio("fullscreen", "Fullscreen", false));
+        content.appendChild(modeDiv);
+
+        const updatePanelUI = () => {
+            const s = settings[currentViewMode];
+            toggleBtn.textContent = s.enabled ? "Turn Subtitles OFF" : "Turn Subtitles ON";
+            toggleBtn.style.background = s.enabled ? "#3ea6ff" : "#555";
+            panel.querySelectorAll('[data-key]').forEach(input => {
+                input.value = s[input.dataset.key];
+            });
+        };
+
+        const createRow = (labelStr, type, key, props = {}) => {
+            const div = document.createElement('div');
+            div.className = "control-group";
+            const lbl = document.createElement('label'); lbl.textContent = labelStr;
+            const inp = document.createElement('input'); inp.type = type; inp.dataset.key = key;
+            Object.assign(inp, props);
+            div.appendChild(lbl); div.appendChild(inp);
+            return div;
+        };
+
+        const createSliderRow = (labelStr, key, min, max, step) => {
+            const div = document.createElement('div');
+            div.className = "slider-group";
+            const lbl = document.createElement('label'); lbl.textContent = labelStr;
+            const wrap = document.createElement('div'); wrap.className = "slider-wrapper";
+            const range = document.createElement('input'); range.type = "range"; range.dataset.key = key; range.min = min; range.max = max; range.step = step;
+            const num = document.createElement('input'); num.type = "number"; num.dataset.key = key; num.min = min; num.max = max; num.step = step;
+            wrap.appendChild(range); wrap.appendChild(num); div.appendChild(lbl); div.appendChild(wrap);
+            return div;
+        };
+
+        content.appendChild(createRow("Color:", "color", "color"));
+        content.appendChild(createRow("Font Size (px):", "number", "fontSize", { min: 8, max: 80 }));
+        content.appendChild(createSliderRow("Container Width (%):", "containerWidth", 40, 100, 1));
+        content.appendChild(createRow("BG Color:", "color", "bgColor"));
+        content.appendChild(createSliderRow("BG Opacity:", "bgOpacity", 0, 1, 0.05));
+        content.appendChild(createSliderRow("V-Position (px):", "vPosition", 0, 600, 1));
+        content.appendChild(createRow("Time Offset (ms):", "number", "timeOffset", { step: 50 }));
+
+        document.body.appendChild(panel);
+
+        panel.addEventListener('input', (e) => {
+            const key = e.target.dataset.key;
+            if (!key) return;
+            const val = e.target.type === 'color' ? e.target.value : parseFloat(e.target.value);
+            settings[currentViewMode][key] = val;
+            panel.querySelectorAll(`[data-key="${key}"]`).forEach(el => { el.value = val; });
+            applyStyles();
+            saveSettings();
+        });
+
+        toggleBtn.onclick = () => {
+            // Kliknięcie w panelu teraz symuluje kliknięcie w ikonkę YouTube
+            const ccBtn = document.querySelector('.ytp-subtitles-button');
+            if (ccBtn) ccBtn.click();
+        };
+
+        let isDragging = false, offset = { x: 0, y: 0 };
+        header.onmousedown = (e) => {
+            isDragging = true;
+            offset.x = e.clientX - panel.offsetLeft;
+            offset.y = e.clientY - panel.offsetTop;
+        };
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panel.style.left = (e.clientX - offset.x) + "px";
+            panel.style.top = (e.clientY - offset.y) + "px";
+            panel.style.transform = "none";
+        });
+        document.addEventListener('mouseup', () => { isDragging = false; });
+
+        updatePanelUI();
+    }
+
+    function ensureGlobalUI() {
+        const headerButtons = document.querySelector('#end #buttons') || document.querySelector('#buttons.ytd-masthead');
+        if (!headerButtons) return;
+
+        let btn = document.getElementById('yt-cs-compact-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'yt-cs-compact-btn';
+            const iconSpan = document.createElement('span'); iconSpan.textContent = "⚙️"; iconSpan.style.marginRight = "4px";
+            const textSpan = document.createElement('span'); textSpan.textContent = "Subs";
+            btn.appendChild(iconSpan); btn.appendChild(textSpan);
+
+            btn.style.cssText = `
+                display: inline-flex !important; align-items: center !important;
+                background-color: #000 !important; color: #fff !important;
+                padding: 2px 8px !important; margin-right: 12px !important;
+                font-size: 11px !important; font-family: Arial, sans-serif !important;
+                font-weight: bold !important; cursor: pointer !important;
+                border: 1px solid #333 !important; border-radius: 4px !important;
+                user-select: none !important; height: 24px !important;
+                align-self: center !important; z-index: 9999 !important;
+            `;
+
+            btn.onclick = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const p = document.getElementById('yt-custom-subs-panel');
+                if (p) { p.style.display = (p.style.display === 'none' ? 'flex' : 'none'); }
+                else { createPanel(); }
+            };
+
+            const allElements = headerButtons.querySelectorAll('*');
+            let eyeElement = null;
+            for (let el of allElements) {
+                if (el.textContent && el.textContent.includes('👁️')) { eyeElement = el; break; }
+            }
+
+            if (eyeElement) eyeElement.parentNode.insertBefore(btn, eyeElement);
+            else headerButtons.insertBefore(btn, headerButtons.firstChild);
+        }
+    }
+
+    function init() {
+        const player = document.getElementById('movie_player');
+        if (player && !window.__SUBS_INIT__) {
+            window.__SUBS_INIT__ = true;
+            playerApi = player;
+            loadSettings();
+
+            if (!document.getElementById('yt-subs-hide-orig')) {
+                const s = document.createElement('style');
+                s.id = 'yt-subs-hide-orig';
+                s.textContent = `.ytp-caption-window-container { display: none !important; }`;
+                document.head.appendChild(s);
+            }
+
+            customSubtitleElement = document.createElement('div');
+            customSubtitleElement.id = 'yt-custom-subs-element';
+            customSubtitleElement.style.cssText = `
+                position: absolute; left: 50%; transform: translateX(-50%);
+                padding: 3px 10px; border-radius: 4px; text-align: center;
+                z-index: 101; pointer-events: none; transition: opacity 0.2s, bottom 0.2s;
+                text-shadow: 1px 1px 2px #000, -1px -1px 2px #000; white-space: pre-line;
+                font-family: "YouTube Noto", Roboto, Arial, sans-serif;
+                display: none;
+            `;
+            player.appendChild(customSubtitleElement);
+
+            const controls = player.querySelector('.ytp-chrome-bottom');
+            if (controls) {
+                controls.addEventListener('mouseenter', () => { isHoveringControls = true; applyStyles(); });
+                controls.addEventListener('mouseleave', () => { isHoveringControls = false; applyStyles(); });
+            }
+
+            const observer = new MutationObserver(() => { applyStyles(); });
+            observer.observe(player, { attributes: true, attributeFilter:['class'] });
+
+            document.addEventListener('fullscreenchange', () => { setTimeout(applyStyles, 100); });
+            setInterval(renderSubtitle, 100);
+        }
+        ensureGlobalUI();
+    }
+
+    setInterval(init, 1000);
+
+    document.addEventListener('keydown', (e) => {
+        if (['INPUT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
+
+        // Jeśli użytkownik naciska X lub C, chcemy wywołać natywne przełączenie napisów
+        // klawisz 'C' YouTube obsługuje sam, ale klawisz 'X' musimy "podpiąć" pod kliknięcie ikonki
+        if (e.key.toLowerCase() === 'x') {
+            const ccBtn = document.querySelector('.ytp-subtitles-button');
+            if (ccBtn) ccBtn.click();
+        }
+        // Dla klawisza 'C' nic nie robimy - YouTube zmieni stan ikonki CC,
+        // a nasza funkcja renderSubtitle sama wykryje tę zmianę i włączy/wyłączy napisy skryptu.
+    });
+})();
