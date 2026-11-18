@@ -3,6 +3,8 @@
 
 (if you don`t see subtitles - check ON/OFF option in extension settings or press "X")
 
+### 2.9.2 Tampermonkey version - Fix author 2 lines subtitles.
+
 ### v2.8.9 Tampermonkey - Fix the subtitles wouldn't go away until new ones appeared. 
 
 ### v2.2 Fix open settings on https://www.yout-ube.com page.
